@@ -1,4 +1,4 @@
-# Planka CLI v4.2
+# Planka CLI v4.3
 
 Advanced CLI for Planka with DevOps-friendly features, powered by `uv`.
 
@@ -21,6 +21,18 @@ Advanced CLI for Planka with DevOps-friendly features, powered by `uv`.
    PLANKA_USERNAME=optimusprime
    PLANKA_PASSWORD=secret
    ```
+
+   **Alternativ** — Password aus einem Secret-Store laden statt im Klartext:
+   ```bash
+   # Aus Datei:
+   PLANKA_PASSWORD_FILE=~/.config/planka/password
+
+   # Aus shell command (z.B. OpenBao, 1Password, pass):
+   PLANKA_PASSWORD_CMD=curl -fsS -H "X-Vault-Token: $BAO_TOKEN" "https://openbao.example.com/v1/secret/data/planka/admin-password" | jq -r '.data.data.password'
+   PLANKA_PASSWORD_CMD=op read "op://Vault/Planka/password"
+   PLANKA_PASSWORD_CMD=pass show planka/admin
+   ```
+   Priorität: `PLANKA_PASSWORD` > `PLANKA_PASSWORD_FILE` > `PLANKA_PASSWORD_CMD`.
 
 4. Wrapper-Skript (einmalig):
    ```bash
@@ -87,6 +99,50 @@ planka cards tag Autobots "Logitech" "Bumblebee"
 planka cards untag Autobots "Kartentitel" "Megatron"
 planka cards untag Autobots "Logitech" "Bumblebee"
 ```
+
+### Comments (v4.3+)
+```bash
+# Comment posten — Text als Argument, aus Datei oder via stdin
+planka cards comment Autobots "Kartentitel" "Quick note"
+planka cards comment Autobots "Kartentitel" --file decision.md
+echo "from pipe" | planka cards comment Autobots "Kartentitel"
+
+# Comments lesen
+planka cards comments Autobots "Kartentitel"
+planka cards comments Autobots "Kartentitel" --output json
+```
+
+### Disambiguation (v4.3+)
+Bei mehreren partial-Match-Treffern erroret die CLI mit der Kandidatenliste statt silent
+die erste Karte zu picken:
+```bash
+$ planka cards untag Autobots "obs-trace" needs-decision
+Ambiguous match: 2 cards found for 'obs-trace'
+  [1775812155560429231] obs-trace-recorded Azure Mapping  (Done)
+  [1776930919865649038] obs-trace-recorded Unit-Mismatch  (Backlog)
+Refine the substring, pass the full id, or use --in <list> to scope.
+
+# Mit --in scoping:
+planka cards untag Autobots "obs-trace" needs-decision --in Backlog
+```
+
+### Bulk operations (v4.3+)
+Alle write-Operationen auf Karten (`move`, `delete`, `tag`, `untag`) lesen mit `--stdin`
+eine Liste von Card-Refs. Im --stdin Modus wird der Card-Positional weggelassen und
+Label bzw. Ziel-Liste müssen als Flag (`--label` / `--to`) übergeben werden:
+```bash
+# Alle needs-decision Karten in Backlog untaggen
+planka cards list Autobots Backlog --output json --jq '[.[].id]' \
+  | planka cards untag Autobots --label needs-decision --stdin
+
+# Bulk move aus Datei (eine ID pro Zeile)
+cat sprint-done.txt | planka cards move Autobots --to Done --stdin
+
+# Bulk delete von test cards
+echo -e "test-card-1\ntest-card-2" | planka cards delete Autobots --stdin
+```
+Stdin akzeptiert: eine ID/Name pro Zeile, JSON-Array `["id1","id2"]`, oder Array of
+Objects mit `.id` Feld.
 
 ## Output-Optionen
 
