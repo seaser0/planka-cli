@@ -47,11 +47,22 @@ class PlankaClient:
         return None
 
     def _save_token(self, token):
+        # Bearer token — restrict to user-only read/write. chmod after write
+        # ensures perms are correct even when re-writing an existing file
+        # (O_CREAT mode is ignored when the file already exists).
         with open(TOKEN_FILE, "w") as f:
             f.write(token)
+        os.chmod(TOKEN_FILE, 0o600)
 
     def login(self):
-        password = _resolve_password()
+        try:
+            password = _resolve_password()
+        except subprocess.CalledProcessError as e:
+            raise SystemExit(
+                f"PLANKA_PASSWORD_CMD failed (exit {e.returncode}):\n"
+                f"  cmd: {e.cmd}\n"
+                f"  stderr: {(e.stderr or '').strip()}"
+            )
         if not password:
             raise SystemExit(
                 "No password source configured. Set one of:\n"

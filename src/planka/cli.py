@@ -79,15 +79,16 @@ def resolve_list_id(client, board_id, list_name):
     raise SystemExit(f"List not found: {list_name}")
 
 
-def resolve_card(client, board_id, card_ref, scope_list=None):
+def resolve_card(client, board_id, card_ref, scope_list=None, board_data=None):
     """Resolve card by ID, exact name, or unique partial name match.
 
     Raises SystemExit with a list of candidates if the partial match is ambiguous,
     preventing silent wrong-card edits (issue #4).
 
     scope_list: if set, only search within that list name (further disambiguation).
+    board_data: pre-fetched board data to avoid re-fetching in bulk ops.
     """
-    data = get_board_data(client, board_id)
+    data = board_data if board_data is not None else get_board_data(client, board_id)
     cards = data.get("included", {}).get("cards", [])
     lists = {l["id"]: l["name"] for l in data.get("included", {}).get("lists", [])}
 
@@ -123,13 +124,9 @@ def resolve_card(client, board_id, card_ref, scope_list=None):
     return matches[0]["id"]
 
 
-def resolve_label(client, board_id, label_ref):
-    """Resolve label by ID, exact name, or unique partial name match.
-
-    Raises SystemExit with candidates on ambiguous match (issue #4).
-    """
-    data = get_board_data(client, board_id)
-    labels = data.get("included", {}).get("labels", [])
+def _resolve_label_in(board_data, label_ref):
+    """Resolve label against pre-fetched board data."""
+    labels = board_data.get("included", {}).get("labels", [])
     for lb in labels:
         if str(lb.get("id")) == label_ref or lb.get("name") == label_ref:
             return lb
@@ -149,6 +146,14 @@ def resolve_label(client, board_id, label_ref):
     return matches[0]
 
 
+def resolve_label(client, board_id, label_ref):
+    """Resolve label by ID, exact name, or unique partial name match.
+
+    Raises SystemExit with candidates on ambiguous match (issue #4).
+    """
+    return _resolve_label_in(get_board_data(client, board_id), label_ref)
+
+
 def read_stdin_refs():
     """Read card refs from stdin. Accepts:
     - One ref per line (id or name)
@@ -161,12 +166,13 @@ def read_stdin_refs():
     text = sys.stdin.read().strip()
     if not text:
         return []
-    if text.startswith("["):
+    if text.lstrip().startswith("["):
         try:
             data = json.loads(text)
-            return [str(item.get("id") if isinstance(item, dict) else item)
-                    for item in data]
-        except (json.JSONDecodeError, AttributeError):
+            if isinstance(data, list):
+                return [str(item.get("id") if isinstance(item, dict) else item)
+                        for item in data]
+        except json.JSONDecodeError:
             pass
     return [line.strip() for line in text.splitlines() if line.strip()]
 
@@ -284,11 +290,13 @@ def _resolve_list_arg(args):
 
 def cards_move(client, args):
     board_id = resolve_board_id(client, args.board)
+    board_data = get_board_data(client, board_id)
     list_id = resolve_list_id(client, board_id, _resolve_list_arg(args))
     refs = _resolve_card_refs(args)
+    in_list = getattr(args, "in_list", None)
 
     def op(ref):
-        card_id = resolve_card(client, board_id, ref, scope_list=getattr(args, "in_list", None))
+        card_id = resolve_card(client, board_id, ref, scope_list=in_list, board_data=board_data)
         client.patch(f"/api/cards/{card_id}", {"listId": list_id, "position": 65535})
         console.print(f"[green]→ {ref} moved[/green]")
     _foreach(refs, op)
@@ -296,10 +304,12 @@ def cards_move(client, args):
 
 def cards_delete(client, args):
     board_id = resolve_board_id(client, args.board)
+    board_data = get_board_data(client, board_id)
     refs = _resolve_card_refs(args)
+    in_list = getattr(args, "in_list", None)
 
     def op(ref):
-        card_id = resolve_card(client, board_id, ref, scope_list=getattr(args, "in_list", None))
+        card_id = resolve_card(client, board_id, ref, scope_list=in_list, board_data=board_data)
         client.delete(f"/api/cards/{card_id}")
         console.print(f"[red]🗑️ {ref} deleted[/red]")
     _foreach(refs, op)
@@ -307,12 +317,14 @@ def cards_delete(client, args):
 
 def cards_tag(client, args):
     board_id = resolve_board_id(client, args.board)
-    label = resolve_label(client, board_id, _resolve_label_arg(args))
+    board_data = get_board_data(client, board_id)
+    label = _resolve_label_in(board_data, _resolve_label_arg(args))
     refs = _resolve_card_refs(args)
+    in_list = getattr(args, "in_list", None)
     import requests as req
 
     def op(ref):
-        card_id = resolve_card(client, board_id, ref, scope_list=getattr(args, "in_list", None))
+        card_id = resolve_card(client, board_id, ref, scope_list=in_list, board_data=board_data)
         try:
             client.post(f"/api/cards/{card_id}/card-labels", {"labelId": label["id"]})
             console.print(f"[green]🏷️ '{label['name']}' → {ref}[/green]")
@@ -326,11 +338,13 @@ def cards_tag(client, args):
 
 def cards_untag(client, args):
     board_id = resolve_board_id(client, args.board)
-    label = resolve_label(client, board_id, _resolve_label_arg(args))
+    board_data = get_board_data(client, board_id)
+    label = _resolve_label_in(board_data, _resolve_label_arg(args))
     refs = _resolve_card_refs(args)
+    in_list = getattr(args, "in_list", None)
 
     def op(ref):
-        card_id = resolve_card(client, board_id, ref, scope_list=getattr(args, "in_list", None))
+        card_id = resolve_card(client, board_id, ref, scope_list=in_list, board_data=board_data)
         # Planka route: DELETE /api/cards/:cardId/card-labels/labelId::labelId
         client.delete(f"/api/cards/{card_id}/card-labels/labelId:{label['id']}")
         console.print(f"[red]🏷️ '{label['name']}' off {ref}[/red]")
