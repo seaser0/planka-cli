@@ -1,0 +1,23 @@
+[project]
+name = "planka-cli"
+version = "4.2.0"
+dependencies = [
+    "requests",
+    "python-dotenv",
+    "rich",
+    "pyyaml",
+    "jq",
+]
+
+[project.scripts]
+planka = "planka.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/planka"]

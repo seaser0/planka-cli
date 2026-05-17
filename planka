@@ -1,0 +1,4 @@
+#!/bin/bash
+export PATH="$PATH:/snap/bin"
+cd ~/.openclaw/scripts/planka-cli
+uv run planka "$@"
