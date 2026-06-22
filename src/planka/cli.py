@@ -224,6 +224,44 @@ def cards_create(client, args):
     output([result.get("item", result)], args)
 
 
+def cards_get(client, args):
+    """Fetch a single card with full detail: description, labels, members, due date.
+
+    Resolves labels/members against board data (the card endpoint only returns
+    ids), so the output is human-readable (issue #8).
+    """
+    board_id = resolve_board_id(client, args.board)
+    board_data = get_board_data(client, board_id)
+    card_id = resolve_card(client, board_id, args.card,
+                           scope_list=getattr(args, "in_list", None), board_data=board_data)
+
+    detail = client.get(f"/api/cards/{card_id}")
+    item = detail.get("item", {})
+    included = detail.get("included", {})
+
+    label_names = {l["id"]: l.get("name", "") for l in board_data.get("included", {}).get("labels", [])}
+    list_names = {l["id"]: l.get("name", "") for l in board_data.get("included", {}).get("lists", [])}
+    labels = [label_names.get(cl.get("labelId"), cl.get("labelId"))
+              for cl in included.get("cardLabels", [])]
+
+    users = {u["id"]: (u.get("name") or u.get("username") or u["id"])
+             for u in included.get("users", [])}
+    members = [users.get(m.get("userId"), m.get("userId"))
+               for m in included.get("cardMemberships", [])]
+
+    result = {
+        "name": item.get("name", ""),
+        "id": item.get("id", ""),
+        "list": list_names.get(item.get("listId"), item.get("listId", "")),
+        "type": item.get("type", ""),
+        "dueDate": item.get("dueDate") or "",
+        "labels": ", ".join(labels),
+        "members": ", ".join(members),
+        "description": item.get("description") or "",
+    }
+    output([result], args)
+
+
 def cards_update(client, args):
     board_id = resolve_board_id(client, args.board)
     card_id = resolve_card(client, board_id, args.card, scope_list=getattr(args, "in_list", None))
@@ -408,7 +446,7 @@ def add_bulk_flag(p):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="planka", description="Planka CLI v4.3")
+    parser = argparse.ArgumentParser(prog="planka", description="Planka CLI v4.4")
     sub = parser.add_subparsers(dest="resource")
     sub.add_parser("login").set_defaults(func=login)
 
@@ -438,6 +476,10 @@ def main():
     cc.add_argument("board"); cc.add_argument("list"); cc.add_argument("name")
     cc.add_argument("--type", default="project")
     cc.set_defaults(func=cards_create); add_flags(cc)
+
+    cg = css.add_parser("get", help="Show a single card's full detail (description, labels, members)")
+    cg.add_argument("board"); cg.add_argument("card")
+    cg.set_defaults(func=cards_get); add_flags(cg); add_scope_flag(cg)
 
     cu = css.add_parser("update")
     cu.add_argument("board"); cu.add_argument("card")
