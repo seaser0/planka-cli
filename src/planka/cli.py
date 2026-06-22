@@ -17,6 +17,22 @@ def apply_jq(data, jq_filter):
     return jq.compile(jq_filter).input(data).all()
 
 
+def _fmt_cell(v, width=80):
+    """Render a value for the table view.
+
+    Lists of label-/user-like dicts collapse to a comma-joined name list so
+    structured `labels` columns stay readable (issue #6/#7). Long strings are
+    truncated — use `-o json`/`-o yaml` for full content.
+    """
+    if isinstance(v, list):
+        return ", ".join(x.get("name", "") if isinstance(x, dict) else str(x) for x in v)
+    if isinstance(v, dict):
+        return v.get("name", str(v))
+    s = "" if v is None else str(v)
+    s = s.replace("\n", " ")
+    return s if len(s) <= width else s[: width - 1] + "…"
+
+
 def to_table(data):
     if isinstance(data, dict):
         data = [data]
@@ -40,7 +56,7 @@ def to_table(data):
     for k in keys:
         table.add_column(str(k))
     for row in data:
-        table.add_row(*[str(row.get(k, "")) for k in keys])
+        table.add_row(*[_fmt_cell(row.get(k, "")) for k in keys])
     console.print(table)
 
 
@@ -208,12 +224,37 @@ def lists_create(client, args):
     console.print(f"[green]✅ List '{args.name}' created[/green]")
 
 
+def _labels_by_card(board_data):
+    """Map cardId -> [{id,name,color}] from the cardLabels + labels joins
+    already present in the board fetch (issue #6/#7)."""
+    inc = board_data.get("included", {})
+    labels_by_id = {l["id"]: l for l in inc.get("labels", [])}
+    by_card = {}
+    for cl in inc.get("cardLabels", []):
+        lb = labels_by_id.get(cl.get("labelId"))
+        if lb:
+            by_card.setdefault(cl.get("cardId"), []).append(
+                {"id": lb["id"], "name": lb.get("name", ""), "color": lb.get("color")})
+    return by_card
+
+
 def cards_list(client, args):
     board_id = resolve_board_id(client, args.board)
-    list_id = resolve_list_id(client, board_id, args.list)
-    cards = [c for c in get_board_data(client, board_id).get("included", {}).get("cards", [])
-             if c.get("listId") == list_id]
-    output([{"name": c["name"], "id": c["id"], "type": c.get("type", "")} for c in cards], args)
+    data = get_board_data(client, board_id)
+    inc = data.get("included", {})
+    list_id = next((l["id"] for l in inc.get("lists", [])
+                    if str(l.get("id")) == args.list or l.get("name") == args.list), None)
+    if not list_id:
+        raise SystemExit(f"List not found: {args.list}")
+    by_card = _labels_by_card(data)
+    rows = [{
+        "name": c["name"],
+        "id": c["id"],
+        "type": c.get("type", ""),
+        "labels": by_card.get(c["id"], []),
+        "description": c.get("description") or "",
+    } for c in inc.get("cards", []) if c.get("listId") == list_id]
+    output(rows, args)
 
 
 def cards_create(client, args):
@@ -423,6 +464,74 @@ def cards_comments(client, args):
     output(rows, args)
 
 
+def get_users(client):
+    data = client.get("/api/users")
+    return data.get("items", []) if isinstance(data, dict) else data
+
+
+def resolve_user(client, ref):
+    """Resolve a user by id, exact username/email, or unique partial match on
+    username/name/email (issue #10). Ambiguous matches raise with candidates."""
+    users = get_users(client)
+    for u in users:
+        if str(u.get("id")) == ref or u.get("username") == ref or u.get("email") == ref:
+            return u
+    lower = ref.lower()
+    matches = [u for u in users
+               if lower in (u.get("username") or "").lower()
+               or lower in (u.get("name") or "").lower()
+               or lower in (u.get("email") or "").lower()]
+    if not matches:
+        raise SystemExit(f"User not found: {ref}")
+    if len(matches) > 1:
+        lines = [f"  [{u['id']}] {u.get('username') or u.get('name')} <{u.get('email', '')}>"
+                 for u in matches]
+        raise SystemExit(
+            f"Ambiguous match: {len(matches)} users found for '{ref}'\n"
+            + "\n".join(lines)
+            + "\nUse the exact username, email, or id.")
+    return matches[0]
+
+
+def _user_label(u):
+    return u.get("username") or u.get("name") or u.get("email") or u["id"]
+
+
+def users_list(client, args):
+    users = get_users(client)
+    output([{"username": u.get("username") or "", "name": u.get("name") or "",
+             "email": u.get("email") or "", "id": u["id"]} for u in users], args)
+
+
+def cards_assign(client, args):
+    board_id = resolve_board_id(client, args.board)
+    board_data = get_board_data(client, board_id)
+    card_id = resolve_card(client, board_id, args.card,
+                           scope_list=getattr(args, "in_list", None), board_data=board_data)
+    user = resolve_user(client, args.user)
+    import requests as req
+    try:
+        client.post(f"/api/cards/{card_id}/card-memberships", {"userId": user["id"]})
+        console.print(f"[green]👤 '{_user_label(user)}' → {args.card}[/green]")
+    except req.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code in (409, 422):
+            console.print(f"[yellow]👤 '{_user_label(user)}' already on {args.card}[/yellow]")
+        else:
+            raise
+
+
+def cards_unassign(client, args):
+    board_id = resolve_board_id(client, args.board)
+    board_data = get_board_data(client, board_id)
+    card_id = resolve_card(client, board_id, args.card,
+                           scope_list=getattr(args, "in_list", None), board_data=board_data)
+    user = resolve_user(client, args.user)
+    # Planka route mirrors card-labels: DELETE /api/cards/:id/card-memberships/userId::userId
+    # (a literal membership-id 404s — verified against planka.nevit.ch).
+    client.delete(f"/api/cards/{card_id}/card-memberships/userId:{user['id']}")
+    console.print(f"[red]👤 '{_user_label(user)}' off {args.card}[/red]")
+
+
 def login(client, args):
     client.login()
     console.print("[green]✅ Login successful[/green]")
@@ -446,7 +555,7 @@ def add_bulk_flag(p):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="planka", description="Planka CLI v4.4")
+    parser = argparse.ArgumentParser(prog="planka", description="Planka CLI v4.5")
     sub = parser.add_subparsers(dest="resource")
     sub.add_parser("login").set_defaults(func=login)
 
@@ -522,6 +631,16 @@ def main():
     cmd_cmts.add_argument("board"); cmd_cmts.add_argument("card")
     cmd_cmts.set_defaults(func=cards_comments); add_flags(cmd_cmts); add_scope_flag(cmd_cmts)
 
+    ca = css.add_parser("assign", help="Assign a user to a card")
+    ca.add_argument("board"); ca.add_argument("card")
+    ca.add_argument("--user", required=True, help="username, email, or userId")
+    ca.set_defaults(func=cards_assign); add_flags(ca); add_scope_flag(ca)
+
+    cua = css.add_parser("unassign", help="Remove a user from a card")
+    cua.add_argument("board"); cua.add_argument("card")
+    cua.add_argument("--user", required=True, help="username, email, or userId")
+    cua.set_defaults(func=cards_unassign); add_flags(cua); add_scope_flag(cua)
+
     # Labels
     lb = sub.add_parser("labels")
     lbs = lb.add_subparsers(dest="action")
@@ -531,6 +650,11 @@ def main():
     lb_create.add_argument("board"); lb_create.add_argument("name")
     lb_create.add_argument("--color", default=None)
     lb_create.set_defaults(func=labels_create); add_flags(lb_create)
+
+    # Users
+    us = sub.add_parser("users")
+    uss = us.add_subparsers(dest="action")
+    ul = uss.add_parser("list"); ul.set_defaults(func=users_list); add_flags(ul)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
