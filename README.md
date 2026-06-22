@@ -1,4 +1,4 @@
-# Planka CLI v4.3
+# Planka CLI v4.4
 
 Advanced CLI for Planka with DevOps-friendly features, powered by `uv`.
 
@@ -64,6 +64,12 @@ planka lists create Autobots "Sprint Backlog"
 ```bash
 # Karten anzeigen
 planka cards list Autobots Backlog
+
+# Einzelne Karte voll auslesen (description, labels, members, dueDate)
+planka cards get Autobots "Kartentitel"
+planka cards get Autobots "Kartentitel" --output json          # description sauber, ohne Tabellen-Wrapping
+planka cards get Autobots "Kartentitel" --jq '.[0].description' # nur die Beschreibung
+planka cards get Autobots "Kartentitel" --in Backlog           # bei mehrdeutigem Namen auf Liste scopen
 
 # Neue Karte erstellen
 planka cards create Autobots Backlog "Titel der Karte" --type story
@@ -161,6 +167,7 @@ Alle Commands unterstützen:
 - ✅ JSON/YAML/Table Output mit jq-Support
 - ✅ Label-Zuweisung per Tag-Name (kein ID-Lookup nötig)
 - ✅ Duplikat-Schutz bei Tag-Zuweisung
+- ✅ `cards get` — einzelne Karte voll auslesen inkl. description, labels & members (v4.4+)
 
 ## Verfügbare Labels (Autobots Board)
 | Label        | Farbe          |
