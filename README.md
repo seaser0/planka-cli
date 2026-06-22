@@ -1,4 +1,4 @@
-# Planka CLI v4.4
+# Planka CLI v4.5
 
 Advanced CLI for Planka with DevOps-friendly features, powered by `uv`.
 
@@ -62,8 +62,11 @@ planka lists create Autobots "Sprint Backlog"
 
 ### Cards
 ```bash
-# Karten anzeigen
+# Karten anzeigen — jede Zeile trägt jetzt labels + description (v4.5+)
 planka cards list Autobots Backlog
+planka cards list Autobots Backlog -o json \
+  --jq '[.[] | select(.labels[]?.name == "needs-decision") | {id, name}]'  # Label-Filter
+planka cards list Autobots Backlog -o json --jq '.[] | {name, desc: .description}'
 
 # Einzelne Karte voll auslesen (description, labels, members, dueDate)
 planka cards get Autobots "Kartentitel"
@@ -105,6 +108,19 @@ planka cards tag Autobots "Logitech" "Bumblebee"
 planka cards untag Autobots "Kartentitel" "Megatron"
 planka cards untag Autobots "Logitech" "Bumblebee"
 ```
+
+### Members (v4.5+)
+```bash
+# User-Liste (username -> userId auflösen)
+planka users list
+planka users list -o json --jq '.[] | select(.username=="seaser") | .id'
+
+# User einer Karte zuweisen / entfernen — --user nimmt username, email oder userId
+planka cards assign   Autobots "Kartentitel" --user seaser
+planka cards unassign Autobots "Kartentitel" --user seaser
+```
+> Hinweis: Die Planka-Route ist `card-memberships/userId:<id>` (analog zum `card-labels`-Quirk);
+> eine literale Membership-ID liefert 404.
 
 ### Comments (v4.3+)
 ```bash
@@ -168,6 +184,8 @@ Alle Commands unterstützen:
 - ✅ Label-Zuweisung per Tag-Name (kein ID-Lookup nötig)
 - ✅ Duplikat-Schutz bei Tag-Zuweisung
 - ✅ `cards get` — einzelne Karte voll auslesen inkl. description, labels & members (v4.4+)
+- ✅ `cards list` trägt `labels` (strukturiert) + `description` → `--jq`-Label-Filter (v4.5+)
+- ✅ `cards assign` / `cards unassign` / `users list` — Card-Member-Verwaltung (v4.5+)
 
 ## Verfügbare Labels (Autobots Board)
 | Label        | Farbe          |
