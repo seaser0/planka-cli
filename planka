@@ -1,4 +1,24 @@
 #!/bin/bash
 # Path-independent launcher: resolve to this script's own directory so the
 # wrapper works from a fresh clone in any location (issue #14).
-exec uv run --project "$(dirname "$(readlink -f "$0")")" planka "$@"
+set -euo pipefail
+
+here="$(dirname "$(readlink -f "$0")")"
+
+# Locate `uv`. Prefer PATH; fall back to the common per-user and snap install
+# locations so the wrapper works regardless of how uv was installed.
+if ! command -v uv >/dev/null 2>&1; then
+    for cand in "$HOME/.local/bin/uv" /snap/bin/uv /usr/local/bin/uv; do
+        if [ -x "$cand" ]; then
+            PATH="$(dirname "$cand"):$PATH"
+            break
+        fi
+    done
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "planka: 'uv' not found on PATH (~/.local/bin, /snap/bin, /usr/local/bin)" >&2
+    exit 127
+fi
+
+exec uv run --project "$here" planka "$@"
