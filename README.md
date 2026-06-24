@@ -134,6 +134,27 @@ planka cards comments Autobots "Kartentitel"
 planka cards comments Autobots "Kartentitel" --output json
 ```
 
+### Attachments (v4.6+)
+```bash
+# Datei an Karte anhängen (--name optional, default = Dateiname)
+planka cards attach Autobots "Kartentitel" ./report.pdf
+planka cards attach Autobots "Kartentitel" ./logo.png --name "Branding.png"
+
+# Attachments einer Karte auflisten
+planka cards attachments Autobots "Kartentitel"
+planka cards attachments Autobots "Kartentitel" -o json --jq '[.[].id]'
+
+# Attachment herunterladen (per id oder name; --out optional, default = Attachment-Name)
+planka cards download Autobots "Kartentitel" report.pdf
+planka cards download Autobots "Kartentitel" 1804723501446203345 --out /tmp/r.pdf
+
+# Attachment löschen (per id oder name)
+planka cards detach Autobots "Kartentitel" report.pdf
+```
+> Hinweis: Upload braucht zwingend ein `name`-Formfeld (sonst `E_MISSING_OR_INVALID_PARAMS`).
+> Downloads laufen über die `/attachments/*`-Route, die per `accessToken`-Cookie authentifiziert
+> (nicht via Bearer-Header) — die CLI regelt das transparent.
+
 ### Disambiguation (v4.3+)
 Bei mehreren partial-Match-Treffern erroret die CLI mit der Kandidatenliste statt silent
 die erste Karte zu picken:
@@ -186,6 +207,8 @@ Alle Commands unterstützen:
 - ✅ `cards get` — einzelne Karte voll auslesen inkl. description, labels & members (v4.4+)
 - ✅ `cards list` trägt `labels` (strukturiert) + `description` → `--jq`-Label-Filter (v4.5+)
 - ✅ `cards assign` / `cards unassign` / `users list` — Card-Member-Verwaltung (v4.5+)
+- ✅ `cards attach` / `attachments` / `download` / `detach` — Datei-Anhänge (v4.6+)
+- ✅ `--jq` folgt jq-CLI-Semantik (Single-Result unwrap) + Scalar/String-Output rendert sauber in der Tabelle (v4.6+)
 
 ## Verfügbare Labels (Autobots Board)
 | Label        | Farbe          |

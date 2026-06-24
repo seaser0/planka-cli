@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import sys
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 import yaml
@@ -20,7 +21,10 @@ except PackageNotFoundError:  # running from a source tree without install metad
 def apply_jq(data, jq_filter):
     if not jq_filter:
         return data
-    return jq.compile(jq_filter).input(data).all()
+    # jq.all() always returns a list of every output. Unwrap a single result to
+    # match the jq CLI: `.[0].id` → scalar, `[.[].id]` → one array (issue #16).
+    results = jq.compile(jq_filter).input(data).all()
+    return results[0] if len(results) == 1 else results
 
 
 def _fmt_cell(v, width=80):
@@ -42,8 +46,17 @@ def _fmt_cell(v, width=80):
 def to_table(data):
     if isinstance(data, dict):
         data = [data]
+    # Scalar / string jq results (e.g. `--jq '.[0].id'`) aren't dict rows — print
+    # them directly instead of calling .get() on them and crashing (issue #16).
+    if not isinstance(data, list):
+        console.print(_fmt_cell(data))
+        return
     if not data:
         console.print("[dim]No data[/dim]")
+        return
+    if any(not isinstance(r, dict) for r in data):
+        for r in data:
+            console.print(_fmt_cell(r))
         return
     priority = ["project", "board", "name", "description", "id", "list", "dueDate", "type"]
     keys = []
@@ -470,6 +483,83 @@ def cards_comments(client, args):
     output(rows, args)
 
 
+def _get_attachments(client, card_id):
+    detail = client.get(f"/api/cards/{card_id}")
+    return detail.get("included", {}).get("attachments", [])
+
+
+def resolve_attachment(client, card_id, ref):
+    """Resolve an attachment on a card by id or exact name (issue #17)."""
+    matches = [a for a in _get_attachments(client, card_id)
+               if str(a.get("id")) == ref or a.get("name") == ref]
+    if not matches:
+        raise SystemExit(f"Attachment not found on card: {ref}")
+    if len(matches) > 1:
+        names = "\n".join(f"  {a['id']}  {a.get('name')}" for a in matches)
+        raise SystemExit(f"Ambiguous attachment '{ref}' ({len(matches)} matches):\n{names}\n"
+                         "Pass the attachment id to disambiguate.")
+    return matches[0]
+
+
+def cards_attach(client, args):
+    """Upload a file attachment to a card (issue #17).
+
+    The `name` form field is REQUIRED — Planka rejects the upload with
+    E_MISSING_OR_INVALID_PARAMS without it.
+    """
+    board_id = resolve_board_id(client, args.board)
+    card_id = resolve_card(client, board_id, args.card, scope_list=getattr(args, "in_list", None))
+    path = os.path.expanduser(args.path)
+    name = args.name or os.path.basename(path)
+    with open(path, "rb") as f:
+        result = client.post_multipart(
+            f"/api/cards/{card_id}/attachments",
+            files={"file": (name, f)},
+            data={"type": "file", "name": name},
+        )
+    item = result.get("item", result)
+    console.print(f"[green]📎 Attached '{item.get('name')}' (id={item.get('id')})[/green]")
+
+
+def cards_attachments(client, args):
+    """List a card's attachments (issue #17)."""
+    board_id = resolve_board_id(client, args.board)
+    card_id = resolve_card(client, board_id, args.card, scope_list=getattr(args, "in_list", None))
+    rows = [{
+        "id": a["id"],
+        "name": a.get("name", ""),
+        "type": a.get("type", ""),
+        "size": (a.get("data") or {}).get("size", ""),
+        "createdAt": a.get("createdAt", ""),
+        "url": (a.get("data") or {}).get("url", ""),
+    } for a in _get_attachments(client, card_id)]
+    output(rows, args)
+
+
+def cards_detach(client, args):
+    """Delete an attachment from a card by id or name (issue #17)."""
+    board_id = resolve_board_id(client, args.board)
+    card_id = resolve_card(client, board_id, args.card, scope_list=getattr(args, "in_list", None))
+    att = resolve_attachment(client, card_id, args.attachment)
+    client.delete(f"/api/attachments/{att['id']}")
+    console.print(f"[green]🗑️  Detached '{att.get('name')}' (id={att['id']})[/green]")
+
+
+def cards_download(client, args):
+    """Download a card attachment to a local file by id or name (issue #17)."""
+    board_id = resolve_board_id(client, args.board)
+    card_id = resolve_card(client, board_id, args.card, scope_list=getattr(args, "in_list", None))
+    att = resolve_attachment(client, card_id, args.attachment)
+    url = (att.get("data") or {}).get("url")
+    if not url:
+        raise SystemExit(f"Attachment '{att.get('name')}' has no downloadable file (type={att.get('type')}).")
+    content = client.download(url)
+    out = os.path.expanduser(args.out) if args.out else att.get("name", att["id"])
+    with open(out, "wb") as f:
+        f.write(content)
+    console.print(f"[green]⬇️  Downloaded '{att.get('name')}' → {out} ({len(content)} bytes)[/green]")
+
+
 def get_users(client):
     data = client.get("/api/users")
     return data.get("items", []) if isinstance(data, dict) else data
@@ -647,6 +737,26 @@ def main():
     cua.add_argument("board"); cua.add_argument("card")
     cua.add_argument("--user", required=True, help="username, email, or userId")
     cua.set_defaults(func=cards_unassign); add_flags(cua); add_scope_flag(cua)
+
+    cat = css.add_parser("attach", help="Upload a file attachment to a card")
+    cat.add_argument("board"); cat.add_argument("card"); cat.add_argument("path")
+    cat.add_argument("--name", help="Attachment name (default: file basename)")
+    cat.set_defaults(func=cards_attach); add_flags(cat); add_scope_flag(cat)
+
+    cats = css.add_parser("attachments", help="List a card's attachments")
+    cats.add_argument("board"); cats.add_argument("card")
+    cats.set_defaults(func=cards_attachments); add_flags(cats); add_scope_flag(cats)
+
+    cdt = css.add_parser("detach", help="Delete an attachment from a card (by id or name)")
+    cdt.add_argument("board"); cdt.add_argument("card")
+    cdt.add_argument("attachment", help="attachment id or name")
+    cdt.set_defaults(func=cards_detach); add_flags(cdt); add_scope_flag(cdt)
+
+    cdl = css.add_parser("download", help="Download a card attachment (by id or name)")
+    cdl.add_argument("board"); cdl.add_argument("card")
+    cdl.add_argument("attachment", help="attachment id or name")
+    cdl.add_argument("--out", "-O", help="Output path (default: attachment name in cwd)")
+    cdl.set_defaults(func=cards_download); add_flags(cdl); add_scope_flag(cdl)
 
     # Labels
     lb = sub.add_parser("labels")
