@@ -1,4 +1,4 @@
 #!/bin/bash
-export PATH="$PATH:/snap/bin"
-cd ~/.openclaw/scripts/planka-cli
-uv run planka "$@"
+# Path-independent launcher: resolve to this script's own directory so the
+# wrapper works from a fresh clone in any location (issue #14).
+exec uv run --project "$(dirname "$(readlink -f "$0")")" planka "$@"

@@ -2,6 +2,7 @@
 import argparse
 import json
 import sys
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 import yaml
 import jq
 from rich.console import Console
@@ -9,6 +10,11 @@ from rich.table import Table
 from .client import PlankaClient
 
 console = Console()
+
+try:
+    __version__ = _pkg_version("planka-cli")
+except PackageNotFoundError:  # running from a source tree without install metadata
+    __version__ = "unknown"
 
 
 def apply_jq(data, jq_filter):
@@ -555,7 +561,8 @@ def add_bulk_flag(p):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="planka", description="Planka CLI v4.5")
+    parser = argparse.ArgumentParser(prog="planka", description=f"Planka CLI v{__version__}")
+    parser.add_argument("--version", action="version", version=f"planka {__version__}")
     sub = parser.add_subparsers(dest="resource")
     sub.add_parser("login").set_defaults(func=login)
 
