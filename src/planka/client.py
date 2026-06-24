@@ -106,6 +106,36 @@ class PlankaClient:
             r.raise_for_status()
         return r.json()
 
+    def _auth_header(self):
+        # No Content-Type — requests sets the multipart boundary itself.
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def post_multipart(self, endpoint, files, data=None):
+        def _do():
+            return requests.post(f"{self.base_url}{endpoint}",
+                                 headers=self._auth_header(), files=files, data=data)
+        r = _do()
+        if self._check(r) is None:
+            r = _do()
+            r.raise_for_status()
+        return r.json()
+
+    def download(self, url):
+        """GET raw bytes from an attachment URL.
+
+        Planka's `/attachments/*` download route authenticates via an
+        `accessToken` cookie, NOT the Authorization header (the Bearer token
+        only works on `/api/*`). See current-user hook in the Planka server.
+        """
+        full = url if url.startswith("http") else f"{self.base_url}{url}"
+        cookies = {"accessToken": self.token}
+        r = requests.get(full, cookies=cookies)
+        if self._check(r) is None:
+            cookies = {"accessToken": self.token}
+            r = requests.get(full, cookies=cookies)
+            r.raise_for_status()
+        return r.content
+
     def delete(self, endpoint):
         r = requests.delete(f"{self.base_url}{endpoint}", headers=self._headers())
         if self._check(r) is None:
