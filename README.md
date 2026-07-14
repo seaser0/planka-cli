@@ -133,6 +133,8 @@ echo "from pipe" | planka cards comment Autobots "Kartentitel"
 planka cards comments Autobots "Kartentitel"
 planka cards comments Autobots "Kartentitel" --output json
 ```
+> Lange Comment-Texte werden in der Tabellenansicht gekürzt; `-o json` / `-o yaml`
+> liefern den ungekürzten Text mit erhaltenen Zeilenumbrüchen (v4.6.1+, issue #20).
 
 ### Attachments (v4.6+)
 ```bash
