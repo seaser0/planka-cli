@@ -475,10 +475,13 @@ def cards_comments(client, args):
     data = client.get(f"/api/cards/{card_id}/comments")
     comments = data.get("items", [])
     comments.sort(key=lambda c: c.get("createdAt") or "")
+    # Pass raw text through; `output()`→`to_table()`→`_fmt_cell()` already
+    # truncates + flattens newlines for the table view, so pre-truncating here
+    # would also cut `-o json`/`-o yaml` output (issue #20).
     rows = [{
         "id": c["id"],
         "createdAt": c.get("createdAt", ""),
-        "text": (c.get("text") or "").replace("\n", " ")[:120]
+        "text": c.get("text") or "",
     } for c in comments]
     output(rows, args)
 
