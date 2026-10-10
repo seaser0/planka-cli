@@ -212,7 +212,7 @@ Alle Commands unterstützen:
 - ✅ `cards assign` / `cards unassign` / `users list` — Card-Member-Verwaltung (v4.5+)
 - ✅ `cards attach` / `attachments` / `download` / `detach` — Datei-Anhänge (v4.6+)
 - ✅ `--jq` folgt jq-CLI-Semantik (Single-Result unwrap) + Scalar/String-Output rendert sauber in der Tabelle (v4.6+)
-- ✅ `create`/`update` liefern ein Objekt (`--jq '.id'`, v4.6.2+); Einzelobjekte rendern im Table-Mode als vertikale `Feld | Wert`-Tabelle ohne leere Felder (v4.7+)
+- ✅ `create`/`update` liefern ein Objekt (`--jq '.id'`, v4.6.2+); Einzelobjekte rendern im Table-Mode als vertikale `Feld | Wert`-Tabelle ohne leere Felder — auch `cards get` (v4.7+)
 
 ## Verfügbare Labels (Autobots Board)
 | Label        | Farbe          |

@@ -8,6 +8,7 @@ import yaml
 import jq
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from .client import PlankaClient
 
 console = Console()
@@ -60,7 +61,10 @@ def to_kv_table(obj):
         v = obj[k]
         if v is None or v == "" or v == [] or v == {}:
             continue
-        table.add_row(str(k), _fmt_cell(v, width=200))
+        # Strings verbatim: keep markdown line breaks; Text() stops rich from
+        # parsing `[ ]` checklists as markup.
+        cell = v if isinstance(v, str) else _fmt_cell(v, width=200)
+        table.add_row(str(k), Text(str(cell)))
     console.print(table)
 
 
@@ -343,6 +347,11 @@ def cards_get(client, args):
         "members": ", ".join(members),
         "description": item.get("description") or "",
     }
+    # Table view: vertical field|value so long descriptions stay readable (#24).
+    # JSON/YAML/--jq keep the documented 1-element array shape (`.[0]`).
+    if args.output == "table" and not args.jq:
+        to_kv_table(result)
+        return
     output([result], args)
 
 
