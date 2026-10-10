@@ -8,6 +8,7 @@ import yaml
 import jq
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from .client import PlankaClient
 
 console = Console()
@@ -43,9 +44,34 @@ def _fmt_cell(v, width=80):
     return s if len(s) <= width else s[: width - 1] + "…"
 
 
+TABLE_PRIORITY = ["project", "board", "name", "description", "id", "list", "dueDate", "type"]
+
+
+def to_kv_table(obj):
+    """Render a single object as a vertical `field | value` table.
+
+    create/update return one raw API item with ~18 fields; as a single row every
+    cell collapses to `…` (issue #24). Empty/null fields are skipped.
+    """
+    keys = [k for k in TABLE_PRIORITY if k in obj] + [k for k in obj if k not in TABLE_PRIORITY]
+    table = Table(show_header=False, show_lines=False)
+    table.add_column("field", style="bold")
+    table.add_column("value", overflow="fold")
+    for k in keys:
+        v = obj[k]
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        # Strings verbatim: keep markdown line breaks; Text() stops rich from
+        # parsing `[ ]` checklists as markup.
+        cell = v if isinstance(v, str) else _fmt_cell(v, width=200)
+        table.add_row(str(k), Text(str(cell)))
+    console.print(table)
+
+
 def to_table(data):
     if isinstance(data, dict):
-        data = [data]
+        to_kv_table(data)
+        return
     # Scalar / string jq results (e.g. `--jq '.[0].id'`) aren't dict rows — print
     # them directly instead of calling .get() on them and crashing (issue #16).
     if not isinstance(data, list):
@@ -58,7 +84,7 @@ def to_table(data):
         for r in data:
             console.print(_fmt_cell(r))
         return
-    priority = ["project", "board", "name", "description", "id", "list", "dueDate", "type"]
+    priority = TABLE_PRIORITY
     keys = []
     seen = set()
     for col in priority:
@@ -321,6 +347,11 @@ def cards_get(client, args):
         "members": ", ".join(members),
         "description": item.get("description") or "",
     }
+    # Table view: vertical field|value so long descriptions stay readable (#24).
+    # JSON/YAML/--jq keep the documented 1-element array shape (`.[0]`).
+    if args.output == "table" and not args.jq:
+        to_kv_table(result)
+        return
     output([result], args)
 
 
