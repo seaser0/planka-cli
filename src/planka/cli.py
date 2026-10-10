@@ -226,7 +226,8 @@ def boards_list(client, args):
 
 def boards_create(client, args):
     result = client.post("/api/projects", {"name": args.name})
-    output([result.get("item", result)], args)
+    # Single object, not a 1-row list, so `--jq '.id'` works (issue #22).
+    output(result.get("item", result), args)
 
 
 def lists_list(client, args):
@@ -281,7 +282,8 @@ def cards_create(client, args):
     list_id = resolve_list_id(client, board_id, args.list)
     result = client.post(f"/api/lists/{list_id}/cards",
                          {"name": args.name, "type": args.type, "position": 65536})
-    output([result.get("item", result)], args)
+    # Single object, not a 1-row list, so `--jq '.id'` works (issue #22).
+    output(result.get("item", result), args)
 
 
 def cards_get(client, args):
@@ -329,7 +331,8 @@ def cards_update(client, args):
     if args.due:
         payload["dueDate"] = args.due
     result = client.patch(f"/api/cards/{card_id}", payload)
-    output([result.get("item", result)], args)
+    # Single object, not a 1-row list, so `--jq '.id'` works (issue #22).
+    output(result.get("item", result), args)
 
 
 def _resolve_card_refs(args):
