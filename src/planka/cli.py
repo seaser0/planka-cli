@@ -3,12 +3,15 @@ import argparse
 import json
 import os
 import sys
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
-import yaml
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 import jq
+import yaml
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
 from .client import PlankaClient
 
 console = Console()
