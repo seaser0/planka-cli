@@ -77,6 +77,7 @@ planka cards get Autobots "Kartentitel" --in Backlog           # bei mehrdeutige
 # Neue Karte erstellen
 planka cards create Autobots Backlog "Titel der Karte" --type story
 planka cards create Autobots Backlog "Titel" --type project
+ID=$(planka cards create Autobots Backlog "Titel" -o json --jq '.id')  # create/update liefern ein Objekt, kein Array (v4.6.2+)
 
 # Karte bearbeiten
 planka cards update Autobots "Kartentitel" --name "Neuer Titel"
