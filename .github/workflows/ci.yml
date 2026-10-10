@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly: catch new CVEs in unchanged deps
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      # --locked fails if uv.lock is stale vs pyproject.toml (the 4.6.0 drift).
+      - run: uv sync --locked
+      - run: uv run ruff check --output-format github
+      - run: uv run pytest -q
+      - name: Smoke test entrypoint
+        run: uv run planka --help && ./planka --version
+
+  audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: pip-audit
+        run: |
+          # Audit the resolved runtime deps only, not the raw venv: the venv
+          # also holds pip/build tooling, which is CI noise (see otc-pricing-mcp).
+          uv export --format requirements-txt --no-emit-project --no-dev --no-hashes \
+            > requirements-audit.txt
+          uv run pip-audit --desc --strict -r requirements-audit.txt

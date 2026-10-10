@@ -227,3 +227,16 @@ Alle Commands unterstützen:
 | Ratchet      | pink-tulip     |
 | Wheeljack    | pumpkin-orange |
 | Perceptor    | antique-blue   |
+
+## Entwicklung & CI
+```bash
+uv sync                 # inkl. dev-Gruppe (pytest, ruff, pip-audit)
+uv run ruff check       # Lint (pyflakes, Fehler, Import-Sortierung)
+uv run pytest -q        # Tests gegen Fake-API, kein Planka-Zugriff nötig
+```
+GitHub Actions (`.github/workflows/ci.yml`) läuft auf jedem PR, Push auf `main` und wöchentlich:
+- **Lint & Test:** `uv sync --locked` (bricht bei veraltetem `uv.lock`), `ruff`, `pytest`, Smoke-Test `planka --help`
+- **Dependency Audit:** `pip-audit --strict` auf die exportierten Runtime-Deps (nicht das venv)
+- Dependabot: Python-Deps wöchentlich (gruppiert), Actions monatlich
+
+Neue Bugfixes bekommen einen Regressionstest mit `# issue #N`. Tests gegen das echte Planka bleiben ein manueller Smoke-Test vor dem Merge (CF Access, keine Secrets in GitHub).

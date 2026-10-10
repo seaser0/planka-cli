@@ -18,3 +18,4 @@ wheels/
 
 # Syncthing conflict artifacts
 *.sync-conflict-*
+requirements-audit.txt
