@@ -41,12 +41,13 @@ def apply_jq(data, jq_filter, single=False):
     try:
         return _run_jq(data, jq_filter)
     except ValueError as e:
+        err = e
         if single and isinstance(data, list) and len(data) == 1:
             try:
                 return _run_jq(data[0], jq_filter)
-            except ValueError:
-                pass
-        raise SystemExit(f"jq error: {e} (filter: {jq_filter})")
+            except ValueError as e2:
+                err = e2  # report the object-level error, it is the meaningful one
+        raise SystemExit(f"jq error: {err} (filter: {jq_filter})")
 
 
 def _fmt_cell(v, width=80):
