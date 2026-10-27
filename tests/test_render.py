@@ -1,4 +1,5 @@
 """Pure helpers: jq semantics and table rendering."""
+import pytest
 from planka import cli
 
 
@@ -43,3 +44,20 @@ def test_kv_table_skips_empty_and_keeps_markup(capsys):  # issue #24
     out = capsys.readouterr().out
     assert "dueDate" not in out and "labels" not in out
     assert "[ ] todo" in out and "[x] done" in out  # not swallowed as rich markup
+
+
+def test_apply_jq_runtime_error_exits_cleanly():
+    with pytest.raises(SystemExit) as e:
+        cli.apply_jq([{"id": "1"}], ".id")
+    assert "jq error" in str(e.value) and ".id" in str(e.value)
+
+
+def test_apply_jq_syntax_error_exits_cleanly():
+    with pytest.raises(SystemExit) as e:
+        cli.apply_jq([1], ".[")
+    assert "jq error" in str(e.value)
+
+
+def test_apply_jq_single_falls_back_to_object():
+    assert cli.apply_jq([{"name": "x"}], ".name", single=True) == "x"
+    assert cli.apply_jq([{"name": "x"}], ".[0].name", single=True) == "x"

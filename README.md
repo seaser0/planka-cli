@@ -72,6 +72,7 @@ planka cards list Autobots Backlog -o json --jq '.[] | {name, desc: .description
 planka cards get Autobots "Kartentitel"
 planka cards get Autobots "Kartentitel" --output json          # description sauber, ohne Tabellen-Wrapping
 planka cards get Autobots "Kartentitel" --jq '.[0].description' # nur die Beschreibung
+planka cards get Autobots "Kartentitel" --jq '.list'            # Objekt-Form geht auch (Fallback, v4.7.1+)
 planka cards get Autobots "Kartentitel" --in Backlog           # bei mehrdeutigem Namen auf Liste scopen
 
 # Neue Karte erstellen
