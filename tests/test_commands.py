@@ -45,6 +45,10 @@ def test_cards_get_jq_index(run):
     assert run("cards", "get", "Autobots", "PSD", "--jq", ".[0].list").strip() == "Backlog"
 
 
+def test_cards_get_jq_object_style(run):
+    assert run("cards", "get", "Autobots", "PSD", "--jq", ".list").strip() == "Backlog"
+
+
 def test_cards_get_table_keeps_line_breaks(run):  # issue #24
     out = run("cards", "get", "Autobots", "301")
     assert "- [ ] export" in out and "- [ ] rescan" in out

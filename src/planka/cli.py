@@ -22,13 +22,32 @@ except PackageNotFoundError:  # running from a source tree without install metad
     __version__ = "unknown"
 
 
-def apply_jq(data, jq_filter):
-    if not jq_filter:
-        return data
+def _run_jq(data, jq_filter):
     # jq.all() always returns a list of every output. Unwrap a single result to
     # match the jq CLI: `.[0].id` → scalar, `[.[].id]` → one array (issue #16).
     results = jq.compile(jq_filter).input(data).all()
     return results[0] if len(results) == 1 else results
+
+
+def apply_jq(data, jq_filter, single=False):
+    """Apply a jq filter; errors exit cleanly instead of a traceback.
+
+    single=True: data is a 1-element wrapper around one object (`cards get`).
+    If the filter fails on the array (e.g. `.name`), it is retried on the object
+    itself, so both `.[0].name` (documented) and `.name` work.
+    """
+    if not jq_filter:
+        return data
+    try:
+        return _run_jq(data, jq_filter)
+    except ValueError as e:
+        err = e
+        if single and isinstance(data, list) and len(data) == 1:
+            try:
+                return _run_jq(data[0], jq_filter)
+            except ValueError as e2:
+                err = e2  # report the object-level error, it is the meaningful one
+        raise SystemExit(f"jq error: {err} (filter: {jq_filter})")
 
 
 def _fmt_cell(v, width=80):
@@ -108,8 +127,8 @@ def to_table(data):
     console.print(table)
 
 
-def output(data, args):
-    data = apply_jq(data, args.jq)
+def output(data, args, single=False):
+    data = apply_jq(data, args.jq, single=single)
     if args.output == "json":
         print(json.dumps(data, indent=2))
     elif args.output == "yaml":
@@ -355,7 +374,7 @@ def cards_get(client, args):
     if args.output == "table" and not args.jq:
         to_kv_table(result)
         return
-    output([result], args)
+    output([result], args, single=True)
 
 
 def cards_update(client, args):
