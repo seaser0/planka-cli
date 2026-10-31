@@ -26,8 +26,8 @@ packages = ["src/planka"]
 [dependency-groups]
 dev = [
     "pip-audit>=2.10.1",
-    "pytest>=9.1.1",
-    "ruff>=0.17.2",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
 ]
 
 [tool.ruff]
