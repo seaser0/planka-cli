@@ -658,6 +658,34 @@ def users_list(client, args):
              "email": u.get("email") or "", "id": u["id"]} for u in users], args)
 
 
+def users_set_password(client, args):
+    # Read from stdin only: argv would end up in shell history and process lists.
+    password = sys.stdin.read().rstrip("\n")
+    if not password:
+        sys.exit("planka: empty password on stdin")
+    user = resolve_user(client, args.user)
+    client.patch(f"/api/users/{user['id']}/password", {"password": password})
+    print(f"password set for {user.get('name') or user['id']}")
+
+
+def boards_members(client, args):
+    board_id = resolve_board_id(client, args.board)
+    included = get_board_data(client, board_id).get("included", {})
+    names = {u["id"]: u.get("name") or "" for u in included.get("users", [])}
+    output([{"user": names.get(m["userId"], ""), "user_id": m["userId"], "role": m.get("role"),
+             "can_comment": m.get("canComment")} for m in included.get("boardMemberships", [])], args)
+
+
+def boards_add_member(client, args):
+    board_id = resolve_board_id(client, args.board)
+    user = resolve_user(client, args.user)
+    data = {"userId": user["id"], "role": args.role}
+    if args.role == "viewer":
+        data["canComment"] = True
+    client.post(f"/api/boards/{board_id}/board-memberships", data)
+    print(f"{user.get('name') or user['id']} added to {args.board} as {args.role}")
+
+
 def cards_assign(client, args):
     board_id = resolve_board_id(client, args.board)
     board_data = get_board_data(client, board_id)
@@ -720,6 +748,9 @@ def main():
     bs = b.add_subparsers(dest="action")
     l = bs.add_parser("list"); l.set_defaults(func=boards_list); add_flags(l)
     c = bs.add_parser("create"); c.add_argument("name"); c.set_defaults(func=boards_create); add_flags(c)
+    bm = bs.add_parser("members"); bm.add_argument("board"); bm.set_defaults(func=boards_members); add_flags(bm)
+    ba = bs.add_parser("add-member"); ba.add_argument("board"); ba.add_argument("user")
+    ba.add_argument("--role", choices=["editor", "viewer"], default="editor"); ba.set_defaults(func=boards_add_member)
 
     # Lists
     lis = sub.add_parser("lists")
@@ -831,6 +862,8 @@ def main():
     us = sub.add_parser("users")
     uss = us.add_subparsers(dest="action")
     ul = uss.add_parser("list"); ul.set_defaults(func=users_list); add_flags(ul)
+    up = uss.add_parser("set-password", help="Set a user's password, read from stdin (admin)")
+    up.add_argument("user"); up.set_defaults(func=users_set_password)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):

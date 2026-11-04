@@ -124,6 +124,14 @@ planka cards unassign Autobots "Kartentitel" --user seaser
 > Hinweis: Die Planka-Route ist `card-memberships/userId:<id>` (analog zum `card-labels`-Quirk);
 > eine literale Membership-ID liefert 404.
 
+### Users and board members (v4.8+)
+
+```bash
+planka boards members "Pipeline v1"
+planka boards add-member "Pipeline v1" "Wheeljack" --role editor
+planka users set-password "Wheeljack" < file-with-password   # stdin only, admin
+```
+
 ### Comments (v4.3+)
 ```bash
 # Comment posten — Text als Argument, aus Datei oder via stdin
